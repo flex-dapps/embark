@@ -9,6 +9,8 @@ import {
 } from "../actions";
 import DataWrapper from "../components/DataWrapper";
 import {getServices} from "../reducers/selectors";
+import Loading from '../components/Loading';
+import Error from '../components/Error';
 
 class ServicesContainer extends Component {
   componentDidMount() {
@@ -21,7 +23,15 @@ class ServicesContainer extends Component {
   }
 
   render() {
-    return <DataWrapper shouldRender={this.props.services.length > 0 } {...this.props} render={({services}) => (
+    const {error, loading, services} = this.props;
+    if (error) {
+      return <Error error={error} />;
+    }
+
+    if (loading) {
+      return <Loading />;
+    }
+    return <DataWrapper shouldRender={services.length > 0 } {...this.props} render={({services}) => (
         <Services services={services} />
       )} />;
 
@@ -31,11 +41,15 @@ class ServicesContainer extends Component {
 ServicesContainer.propTypes = {
   fetchServices: PropTypes.func,
   listenToServices: PropTypes.func,
+  error: PropTypes.string,
+  loading: PropTypes.bool
 };
 
 function mapStateToProps(state, _props) {
   return {
-    services: getServices(state)
+    services: getServices(state),
+    error: state.errorMessage,
+    loading: state.loading
   };
 }
 
