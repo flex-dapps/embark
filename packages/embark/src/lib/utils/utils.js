@@ -466,19 +466,6 @@ function fileTreeSort(nodes){
   return folders.concat(files);
 }
 
-function fuzzySearch(text, list, filter) {
-  const fuzzy = require('fuzzy');
-  return fuzzy.filter(text, list, {extract: (filter || function () {})});
-}
-
-function jsonFunctionReplacer(_key, value) {
-  if (typeof value === 'function') {
-    return value.toString();
-  }
-
-  return value;
-}
-
 function getWindowSize() {
   const windowSize = require('window-size');
   if (windowSize) {
@@ -546,8 +533,6 @@ module.exports = {
   errorMessage,
   timer,
   fileTreeSort,
-  fuzzySearch,
-  jsonFunctionReplacer,
   getWindowSize,
   isEs6Module,
   urlJoin

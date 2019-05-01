@@ -1,25 +1,32 @@
 /*globals describe, it*/
-let Console = require('../lib/modules/console/');
-let Plugins = require('../lib/core/plugins.js');
-let IPC = require('../lib/core/ipc.js');
+let Console = require('../lib');
 let Logger = require('embark-logger');
 let assert = require('assert');
 let version = require('../../package.json').version;
 
 describe('embark.Console', function() {
-  let ipc = new IPC({ipcRole: 'none'});
-  let events = {once: () => {}, setCommandHandler: () => {}, emit: () => {}, on: () => {}, request: () => {}};
   let logger = new Logger({logLevel: 'error'});
-  let plugins = new Plugins({plugins: {}, events, logger});
+  let ipc = {
+    isServer: () => { return true; },
+    broadcast: () => {},
+    on: () => {},
+    isClient: () => { return false; }
+  };
+  let events = {once: () => {}, setCommandHandler: () => {}, emit: () => {}, on: () => {}, request: () => {}};
+  let plugins = {
+    logger: logger,
+    createPlugin: () => { return {registerAPICall: () => {}}; },
+    getPluginsProperty: () => { return []; }
+  };
   let embarkObject = {
     registerAPICall: () => {},
     events: events,
     logger: plugins.logger,
     fs: {
-      existsSync: () => { return false },
-      dappPath: () => { return "ok" }
+      existsSync: () => { return false; },
+      dappPath: () => { return "ok"; }
     },
-    registerConsoleCommand: (cmd, opt) => {},
+    registerConsoleCommand: (_cmd, _opt) => {},
     embarkConfig: {
       options: {
         solc: {
@@ -28,7 +35,7 @@ describe('embark.Console', function() {
         }
       }
     }
-  }
+  };
   let console = new Console(embarkObject, {plugins, version, ipc, events, logger});
 
   describe('#executeCmd', function() {

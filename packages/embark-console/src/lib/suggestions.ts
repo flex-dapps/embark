@@ -1,4 +1,4 @@
-const fuzzySearch = require("../../utils/utils").fuzzySearch;
+const { fuzzySearch } = require("embark-utils").fuzzySearch;
 
 import { Embark, Events } from "embark";
 
@@ -18,7 +18,7 @@ export default class Suggestions {
   private embark: Embark;
   private events: Events;
   private contracts: ContractsManager;
-  private static readonly DEFAULT_SUGGESTIONS = require("./suggestions.json").suggestions;
+  private static readonly DEFAULT_SUGGESTIONS = require("../../suggestions.json").suggestions;
   private _suggestions: SuggestionsList = [];
 
   constructor(embark: Embark, options?: object) {
