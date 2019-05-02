@@ -15,7 +15,8 @@ import {
   decodeParams,
   sha3,
   isHex,
-  soliditySha3
+  soliditySha3,
+  toChecksumAddress
 } from './web3Utils';
 import { getAddressToContract, getTransactionParams } from './transactionUtils';
 import AccountParser from './accountParser';
@@ -200,6 +201,7 @@ const Utils = {
   normalizeInput: logUtils.normalizeInput,
   LogHandler: require('./logHandler'),
   proposeAlternative,
+  toChecksumAddress,
   toposort,
   AddressUtils,
   AccountParser
