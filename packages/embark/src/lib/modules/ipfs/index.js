@@ -16,6 +16,11 @@ class IPFS {
     this.namesystemConfig = embark.config.namesystemConfig;
     this.embark = embark;
     this.fs = embark.fs;
+    this.isServiceRegistered = false;
+    this.addedToEmbarkJs = false;
+    this.addedToConsole = false;
+    this.storageProcessesLauncher = null;
+    this.usingRunningNode = false;
 
     this.webServerConfig = embark.config.webServerConfig;
     this.blockchainConfig = embark.config.blockchainConfig;
@@ -28,10 +33,32 @@ class IPFS {
     this.registerUploadCommand();
     this.listenToCommands();
     this.registerConsoleCommands();
-    this.startProcess((err, newProcessStarted) => {
-      this.addStorageProviderToEmbarkJS();
-      this.addObjectToConsole();
-      this.events.emit("ipfs:process:started", err, newProcessStarted);
+    this.events.request("processes:register", "ipfs", {
+      launchFn: (cb) => {
+        if(this.usingRunningNode) {
+          return cb(__("IPFS process is running in a separate process and cannot be started by Embark."));
+        }
+        this.startProcess((err, newProcessStarted) => {
+          this.addStorageProviderToEmbarkJS();
+          this.addObjectToConsole();
+          this.events.emit("ipfs:process:started", err, newProcessStarted);
+          cb();
+        });
+      },
+      stopFn: (cb) => {
+        if(this.usingRunningNode) {
+          return cb(__("IPFS process is running in a separate process and cannot be stopped by Embark."));
+        }
+        this.stopProcess(cb);
+      }
+    });
+    this.events.request("processes:launch", "ipfs", (err, msg) => {
+      if (err) {
+        return this.logger.error(err);
+      }
+      if (msg) {
+        this.logger.info(msg);
+      }
     });
   }
 
@@ -50,30 +77,33 @@ class IPFS {
   }
 
   setServiceCheck() {
-    let self = this;
+    if (!this.isServiceRegistered) {
+      this.isServiceRegistered = true;
+      let self = this;
 
-    self.events.on('check:backOnline:IPFS', function () {
-      self.logger.info(__('IPFS node detected') + '..');
-    });
-
-    self.events.on('check:wentOffline:IPFS', function () {
-      self.logger.info(__('IPFS node is offline') + '..');
-    });
-
-    self.events.request("services:register", 'IPFS', function (cb) {
-      self._checkService((err, body) => {
-        if (err) {
-          self.logger.trace("IPFS unavailable");
-          return cb({name: "IPFS ", status: 'off'});
-        }
-        if (body.Version) {
-          self.logger.trace("IPFS available");
-          return cb({name: ("IPFS " + body.Version), status: 'on'});
-        }
-        self.logger.trace("IPFS available");
-        return cb({name: "IPFS ", status: 'on'});
+      self.events.on('check:backOnline:IPFS', function () {
+        self.logger.info(__('IPFS node detected') + '...');
       });
-    });
+
+      self.events.on('check:wentOffline:IPFS', function () {
+        self.logger.info(__('IPFS node is offline') + '...');
+      });
+
+      self.events.request("services:register", 'IPFS', function (cb) {
+        self._checkService((err, body) => {
+          if (err) {
+            self.logger.trace("IPFS unavailable");
+            return cb({name: "IPFS ", status: 'off'});
+          }
+          if (body.Version) {
+            self.logger.trace("IPFS available");
+            return cb({name: ("IPFS " + body.Version), status: 'on'});
+          }
+          self.logger.trace("IPFS available");
+          return cb({name: "IPFS ", status: 'on'});
+        });
+      });
+    }
   }
 
   _getNodeUrlConfig() {
@@ -98,59 +128,73 @@ class IPFS {
   }
 
   addStorageProviderToEmbarkJS() {
-    this.events.request('version:downloadIfNeeded', 'ipfs-api', (err, location) => {
-      if (err) {
-        this.logger.error(__('Error downloading IPFS API'));
-        return this.logger.error(err.message || err);
-      }
-      this.events.request('code-generator:ready', () => {
-        this.events.request('code-generator:symlink:generate', location, 'ipfs-api', (err, _symlinkDest) => {
-          if (err) {
-            this.logger.error(__('Error creating a symlink to IPFS API'));
-            return this.logger.error(err.message || err);
-          }
+    if(!this.addedToEmbarkJs) {
+      this.addedToEmbarkJs = true;
+      this.events.request('version:downloadIfNeeded', 'ipfs-api', (err, location) => {
+        if (err) {
+          this.logger.error(__('Error downloading IPFS API'));
+          return this.logger.error(err.message || err);
+        }
+        this.events.request('code-generator:ready', () => {
+          this.events.request('code-generator:symlink:generate', location, 'ipfs-api', (err, _symlinkDest) => {
+            if (err) {
+              this.logger.error(__('Error creating a symlink to IPFS API'));
+              return this.logger.error(err.message || err);
+            }
 
-          this.events.emit('runcode:register', 'IpfsApi', require('ipfs-api'), () => {
-            let code = "";
-            code += "\nconst __embarkIPFS = require('embarkjs-ipfs')";
-            code += "\nEmbarkJS.Storage.registerProvider('ipfs', __embarkIPFS.default || __embarkIPFS);";
+            this.events.emit('runcode:register', 'IpfsApi', require('ipfs-api'), () => {
+              let code = "";
+              code += "\nconst __embarkIPFS = require('embarkjs-ipfs')";
+              code += "\nEmbarkJS.Storage.registerProvider('ipfs', __embarkIPFS.default || __embarkIPFS);";
 
-            this.embark.addCodeToEmbarkJS(code);
-            this.embark.addConsoleProviderInit("storage", code, (storageConfig) => storageConfig.enabled);
+              this.embark.addCodeToEmbarkJS(code);
+              this.embark.addConsoleProviderInit("storage", code, (storageConfig) => storageConfig.enabled);
+            });
           });
         });
       });
-    });
+    }
   }
 
   addObjectToConsole() {
-    const {host, port} = this._getNodeUrlConfig();
-    let ipfs = IpfsApi(host, port);
-    this.events.emit("runcode:register", "ipfs", ipfs);
+    if(!this.addedToConsole) {
+      this.addedToConsole = true;
+
+      const {host, port} = this._getNodeUrlConfig();
+      let ipfs = IpfsApi(host, port);
+      this.events.emit("runcode:register", "ipfs", ipfs);
+    }
   }
 
   startProcess(callback) {
     this._checkService((err) => {
       if (!err) {
+        this.usingRunningNode = true;
         this.logger.info("IPFS node found, using currently running node");
         return callback(null, false);
       }
       this.logger.info("IPFS node not found, attempting to start own node");
       let self = this;
-      const storageProcessesLauncher = new StorageProcessesLauncher({
-        logger: self.logger,
-        events: self.events,
-        storageConfig: self.storageConfig,
-        webServerConfig: self.webServerConfig,
-        blockchainConfig: self.blockchainConfig,
-        corsParts: self.embark.config.corsParts,
-        embark: self.embark
-      });
+      if(this.storageProcessesLauncher === null) {
+        this.storageProcessesLauncher = new StorageProcessesLauncher({
+          logger: self.logger,
+          events: self.events,
+          storageConfig: self.storageConfig,
+          webServerConfig: self.webServerConfig,
+          blockchainConfig: self.blockchainConfig,
+          corsParts: self.embark.config.corsParts,
+          embark: self.embark
+        });
+      }
       self.logger.trace(`Storage module: Launching ipfs process...`);
-      return storageProcessesLauncher.launchProcess('ipfs', (err) => {
+      return this.storageProcessesLauncher.launchProcess('ipfs', (err) => {
         callback(err, true);
       });
     });
+  }
+  stopProcess(cb) {
+    if(!this.storageProcessesLauncher) return cb();
+    this.storageProcessesLauncher.stopProcess("ipfs", cb);
   }
 
   registerUploadCommand() {
